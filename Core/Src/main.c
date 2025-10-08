@@ -80,9 +80,9 @@ uint32_t Drum_LUT = {1994, 2124, 1833, 1456, 1515, 1850, 2244, 2453, 2243, 2017,
 
 
 // TODO: Equation to calculate TIM2_Ticks
-uint32_t TIM2_Ticks = 0; // How often to write new LUT value
+uint32_t TIM2_Ticks = (TIM2CLK / (F_SIGNAL * NS)); // How often to write new LUT value
 uint32_t DestAddress = (uint32_t) &(TIM3->CCR3); // Write LUT TO TIM3->CCR3 to modify PWM duty cycle
-
+volatile uint32_t lastButtonTim = 0;
 
 /* USER CODE END PV */
 
@@ -133,17 +133,22 @@ int main(void)
   MX_DMA_Init();
   MX_TIM2_Init();
   MX_TIM3_Init();
+
   /* USER CODE BEGIN 2 */
   // TODO: Start TIM3 in PWM mode on channel 3
+  HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_3);
 
   // TODO: Start TIM2 in Output Compare (OC) mode on channel 1
+  HAL_TIM_OC_Start(&htim2, TIM_CHANNEL_1);
 
   // TODO: Start DMA in IT mode on TIM2->CH1. Source is LUT and Dest is TIM3->CCR3; start with Sine LUT
+  HAL_DMA_Start_IT(&hdma_tim2_ch1, (uint32_t)Sin_LUT, DestAddress, NS);
 
   // TODO: Write current waveform to LCD(Sine is the first waveform)
-
+  lcd_command(CLEAR);
+  lcd_putstring("Sine ----");
   // TODO: Enable DMA (start transfer from LUT to CCR)
-
+  __HAL_TIM_ENABLE_DMA(&htim2, TIM_DMA_CC1);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -411,13 +416,71 @@ static void MX_GPIO_Init(void)
 void EXTI0_IRQHandler(void){
 
 	// TODO: Debounce using HAL_GetTick()
+	uint32_t now = HAL_GetTick();
+	 if ((now - lastButtonTim < 200)){
+			HAL_GPIO_EXTI_IRQHandler(Button0_Pin);
+		    return;
+		  }
 
+	lastButtonTim = now;
 
 	// TODO: Disable DMA transfer and abort IT, then start DMA in IT mode with new LUT and re-enable transfer
-	// HINT: Consider using C's "switch" function to handle LUT changes
+
+	static uint8_t index = 0;
+
+	   __HAL_TIM_DISABLE_DMA(&htim2, TIM_DMA_CC1);
+	   HAL_DMA_Abort_IT(&hdma_tim2_ch1);
+
+	   index = (index + 1) % 6;
+
+	   switch(index){
+	   case 0:
+		   HAL_DMA_Start_IT(&hdma_tim2_ch1, (uint32_t)Sin_LUT, DestAddress, NS);
+		   lcd_command(CLEAR);
+		   //HAL_Delay(2);
+		   lcd_putstring("Sine");
+		   break;
+	   case 1:
+		   HAL_DMA_Start_IT(&hdma_tim2_ch1, (uint32_t)Saw_LUT, DestAddress, NS);
+		   lcd_command(CLEAR);
+		   //HAL_Delay(2);
+		   lcd_putstring("Sawtooth");
+		   break;
+	   case 2:
+		   HAL_DMA_Start_IT(&hdma_tim2_ch1, (uint32_t)Triangle_LUT, DestAddress, NS);
+		   lcd_command(CLEAR);
+		   //HAL_Delay(2);
+		   lcd_putstring("Triangle");
+		   break;
+	   case 3:
+		   HAL_DMA_Start_IT(&hdma_tim2_ch1, (uint32_t)Piano_LUT, DestAddress, NS);
+		   lcd_command(CLEAR);
+		  // HAL_Delay(2);
+		   lcd_putstring("Piano");
+		   break;
+	   case 4:
+		   HAL_DMA_Start_IT(&hdma_tim2_ch1, (uint32_t)Guitar_LUT, DestAddress, NS);
+		   lcd_command(CLEAR);
+		   //HAL_Delay(2);
+		   lcd_putstring("Guitar");
+		   break;
+	   case 5:
+		   HAL_DMA_Start_IT(&hdma_tim2_ch1, (uint32_t)Drum_LUT, DestAddress, NS);
+		   lcd_command(CLEAR);
+		   //HAL_Delay(2);
+		   lcd_putstring("Drum");
+		   break;
+	   default:
+		   waveIndex = 0;
+		   HAL_DMA_Start_IT(&hdma_tim2_ch1, (uint32_t)Sin_LUT, DestAddress, NS);
+		   lcd_command(CLEAR);
+		   //HAL_Delay(2);
+		   lcd_putstring("Sine");
+		   break;
+	   }
 
 
-
+	__HAL_TIM_ENABLE_DMA(&htim2, TIM_DMA_CC1);
 
 	HAL_GPIO_EXTI_IRQHandler(Button0_Pin); // Clear interrupt flags
 }
